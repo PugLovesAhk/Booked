@@ -5,8 +5,17 @@ import type { Quote } from '../lib/types';
 import { SortIcon } from './Icons';
 import { StatusBadge } from './StatusBadge';
 
-type Key = 'customer_name' | 'job' | 'price_cents' | 'status' | 'created_at' | 'followups_sent';
+type Key = 'customer_name' | 'job' | 'price_cents' | 'status' | 'followups_sent' | 'created_at';
 const STATUS_ORDER = { waiting: 0, booked: 1, declined: 2 } as const;
+
+const COLUMNS: { key: Key; label: string; right?: boolean }[] = [
+  { key: 'customer_name', label: 'Customer' },
+  { key: 'job', label: 'Job' },
+  { key: 'price_cents', label: 'Price', right: true },
+  { key: 'status', label: 'Status' },
+  { key: 'followups_sent', label: 'Follow-ups', right: true },
+  { key: 'created_at', label: 'Sent' },
+];
 
 export function QuoteTable({ quotes, selectedId }: { quotes: Quote[]; selectedId?: string }) {
   const navigate = useNavigate();
@@ -14,64 +23,55 @@ export function QuoteTable({ quotes, selectedId }: { quotes: Quote[]; selectedId
 
   const sorted = useMemo(() => {
     const val = (q: Quote) =>
-      sort.key === 'status' ? STATUS_ORDER[q.status] : sort.key === 'customer_name' || sort.key === 'job' ? q[sort.key].toLowerCase() : q[sort.key];
+      sort.key === 'status' ? STATUS_ORDER[q.status] : typeof q[sort.key] === 'string' ? (q[sort.key] as string).toLowerCase() : q[sort.key];
     return [...quotes].sort((a, b) => {
       const x = val(a), y = val(b);
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
     });
   }, [quotes, sort]);
 
-  const header = (key: Key, label: string, className = '') => {
-    const active = sort.key === key;
-    return (
-      <th className={className} aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-        <button
-          className={`th-btn${active ? ' active' : ''}`}
-          onClick={() => setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : key === 'created_at' || key === 'price_cents' ? -1 : 1 }))}
-        >
-          {label}
-          <SortIcon className="sort-icon" />
-        </button>
-      </th>
-    );
-  };
-
-  if (!quotes.length) return <p className="empty">No quotes match.</p>;
+  const toggle = (key: Key) =>
+    setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : key === 'created_at' || key === 'price_cents' ? -1 : 1 }));
 
   return (
-    <div className="table-wrap">
-      <table className="quote-table">
+    <div className="panel table-panel">
+      <table className="qtable">
         <thead>
           <tr>
-            {header('customer_name', 'Customer')}
-            {header('job', 'Job')}
-            {header('price_cents', 'Price', 'num')}
-            {header('status', 'Status')}
-            {header('followups_sent', 'Follow-ups', 'num')}
-            {header('created_at', 'Sent')}
+            {COLUMNS.map((c) => {
+              const active = sort.key === c.key;
+              return (
+                <th key={c.key} className={c.right ? 'r' : ''} aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+                  <button className="th-sort" data-active={active} onClick={() => toggle(c.key)}>
+                    {c.label}
+                    <SortIcon />
+                  </button>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
           {sorted.map((q) => (
             <tr
               key={q.id}
-              className={`${q.id === selectedId ? 'selected' : ''}${q.unread ? ' unread' : ''}`}
-              onClick={() => navigate(`/quotes/${q.id}`)}
+              aria-selected={q.id === selectedId}
               tabIndex={0}
+              onClick={() => navigate(`/quotes/${q.id}`)}
               onKeyDown={(e) => e.key === 'Enter' && navigate(`/quotes/${q.id}`)}
             >
               <td>
-                <div className="cell-name">
-                  {q.unread && <span className="dot" aria-label="New activity" />}
+                <div className="cell-customer">
+                  {q.unread && <i className="new-dot" aria-label="New activity" />}
                   {q.customer_name}
                 </div>
-                <div className="muted small">{displayPhone(q.customer_phone)}</div>
+                <div className="cell-sub">{displayPhone(q.customer_phone)}</div>
               </td>
               <td className="cell-job">{q.job}</td>
-              <td className="num strong">{money(q.price_cents)}</td>
+              <td className="r cell-price">{money(q.price_cents)}</td>
               <td><StatusBadge status={q.status} /></td>
-              <td className="num">{q.followups_sent}</td>
-              <td className="muted">{shortDate(q.created_at)}</td>
+              <td className="r">{q.followups_sent}</td>
+              <td className="cell-sub">{shortDate(q.created_at)}</td>
             </tr>
           ))}
         </tbody>

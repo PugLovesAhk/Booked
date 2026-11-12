@@ -6,7 +6,7 @@ export function StatusBadge({ status, large = false }: { status: QuoteStatus; la
   const Icon = status === 'booked' ? CheckIcon : status === 'declined' ? XIcon : ClockIcon;
   return (
     <span className={`badge badge-${status}${large ? ' badge-lg' : ''}`}>
-      <Icon className="badge-icon" />
+      <Icon />
       {statusLabel(status)}
     </span>
   );

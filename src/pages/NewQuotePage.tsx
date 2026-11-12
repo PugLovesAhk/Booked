@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useData } from '../lib/data';
-import { displayPhone, hasAccess, normalizePhone, parsePrice, typingPhone } from '../lib/format';
+import { hasAccess, normalizePhone, parsePrice, typingPhone } from '../lib/format';
 import { useToast } from '../lib/toast';
+
+type FieldName = 'name' | 'phone' | 'job' | 'price';
 
 export function NewQuotePage() {
   const { profile, quotes, createQuote } = useData();
@@ -12,145 +14,149 @@ export function NewQuotePage() {
   const [phone, setPhone] = useState('');
   const [job, setJob] = useState('');
   const [price, setPrice] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<{ field: FieldName; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const refs = {
+  const refs: Record<FieldName, RefObject<HTMLInputElement>> = {
     name: useRef<HTMLInputElement>(null),
     phone: useRef<HTMLInputElement>(null),
     job: useRef<HTMLInputElement>(null),
     price: useRef<HTMLInputElement>(null),
   };
 
-  // Suggest jobs this business has quoted before (faster typing in the truck).
+  // Jobs this business has quoted before, offered as the user types.
   const recentJobs = useMemo(() => [...new Set(quotes.map((q) => q.job))].slice(0, 30), [quotes]);
 
   if (profile && !hasAccess(profile)) {
     return (
       <div className="page page-narrow">
-        <h1 className="page-title">New Quote</h1>
-        <div className="card paywall">
-          <h2>Your free trial has ended</h2>
-          <p>Booked is $39/month. Add a payment method to keep texting quotes and follow-ups.</p>
-          <Link to="/settings#billing" className="btn btn-primary btn-lg btn-block">Add payment</Link>
+        <header className="page-header"><h1 className="page-title">New quote</h1></header>
+        <div className="panel empty">
+          <p className="empty-title">Your free trial has ended</p>
+          <p>Booked is $39/month. Add a payment method to keep sending quotes and follow-ups.</p>
+          <Link to="/settings#plan" className="btn btn-primary">Add payment method</Link>
         </div>
       </div>
     );
   }
 
+  const fail = (field: FieldName, text: string) => {
+    setError({ field, text });
+    refs[field].current?.focus();
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     const e164 = normalizePhone(phone);
     const cents = parsePrice(price);
-    if (!name.trim()) return fail('Add the customer name.', refs.name);
-    if (!e164) return fail('Enter a 10-digit phone number.', refs.phone);
-    if (!job.trim()) return fail('Add a short job description.', refs.job);
-    if (cents === null) return fail('Enter the price, like 450 or 1,250.', refs.price);
+    if (!name.trim()) return fail('name', 'Enter the customer’s name.');
+    if (!e164) return fail('phone', 'Enter a 10-digit mobile number.');
+    if (!job.trim()) return fail('job', 'Describe the job in a few words.');
+    if (cents === null) return fail('price', 'Enter the price in dollars, for example 450 or 1,250.50.');
 
     setSaving(true);
     try {
       const { quote, sms } = await createQuote({ customer_name: name.trim(), customer_phone: e164, job: job.trim(), price: cents / 100 });
-      if (sms.ok) toast(`Quote texted to ${quote.customer_name}`, 'success');
+      if (sms.ok) toast(sms.status === 'demo' ? `Quote saved for ${quote.customer_name}` : `Quote sent to ${quote.customer_name}`, 'success');
       else toast(`Quote saved, but the text wasn’t sent: ${sms.error}`, 'error');
       navigate(`/quotes/${quote.id}`, { replace: true });
     } catch (err) {
-      setError((err as Error).message);
+      setError({ field: 'price', text: (err as Error).message });
       setSaving(false);
     }
   };
 
-  function fail(msg: string, ref: RefObject<HTMLInputElement>) {
-    setError(msg);
-    ref.current?.focus();
-  }
-
-  const next = (ref: RefObject<HTMLInputElement>) => (e: KeyboardEvent) => {
+  const next = (field: FieldName) => (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      ref.current?.focus();
+      refs[field].current?.focus();
     }
   };
 
-  const cents = parsePrice(price);
-  const e164 = normalizePhone(phone);
+  const invalid = (f: FieldName) => (error?.field === f ? true : undefined);
 
   return (
     <div className="page page-narrow">
-      <h1 className="page-title">New Quote</h1>
-      <form className="card form quote-form" onSubmit={submit} noValidate>
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">New quote</h1>
+          <p className="page-sub">Your customer gets a text with a link to accept or decline.</p>
+        </div>
+      </header>
+
+      <form className="panel form" style={{ padding: 20 }} onSubmit={submit} noValidate>
         <label className="field">
-          <span>Customer name</span>
+          <span className="field-label">Customer name</span>
           <input
             ref={refs.name}
+            className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={next(refs.phone)}
+            onKeyDown={next('phone')}
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="next"
-            placeholder="Maria Lopez"
-            autoFocus
             maxLength={100}
+            aria-invalid={invalid('name')}
+            autoFocus
           />
         </label>
         <label className="field">
-          <span>Customer phone</span>
+          <span className="field-label">Customer mobile</span>
           <input
             ref={refs.phone}
+            className="input"
             value={phone}
             onChange={(e) => setPhone(typingPhone(e.target.value))}
-            onKeyDown={next(refs.job)}
+            onKeyDown={next('job')}
             type="tel"
             inputMode="tel"
             autoComplete="off"
             enterKeyHint="next"
-            placeholder="(555) 123-4567"
+            aria-invalid={invalid('phone')}
           />
         </label>
         <label className="field">
-          <span>Job</span>
+          <span className="field-label">Job</span>
           <input
             ref={refs.job}
+            className="input"
             value={job}
             onChange={(e) => setJob(e.target.value)}
-            onKeyDown={next(refs.price)}
+            onKeyDown={next('price')}
             list="recent-jobs"
             autoComplete="off"
             autoCapitalize="sentences"
             enterKeyHint="next"
-            placeholder="AC tune-up and filter change"
             maxLength={300}
+            aria-invalid={invalid('job')}
           />
           <datalist id="recent-jobs">
             {recentJobs.map((j) => <option key={j} value={j} />)}
           </datalist>
         </label>
         <label className="field">
-          <span>Price</span>
-          <div className="input-prefix">
-            <span aria-hidden="true">$</span>
+          <span className="field-label">Price</span>
+          <span className="affix">
+            <span className="affix-text" aria-hidden="true">$</span>
             <input
               ref={refs.price}
+              className="input money"
               value={price}
               onChange={(e) => setPrice(e.target.value.replace(/[^\d.,]/g, ''))}
               inputMode="decimal"
               autoComplete="off"
               enterKeyHint="send"
-              placeholder="450"
+              aria-invalid={invalid('price')}
             />
-          </div>
+          </span>
         </label>
 
-        {error && <p className="form-error" role="alert">{error}</p>}
+        {error && <p className="form-error" role="alert">{error.text}</p>}
 
-        <button className="btn btn-primary btn-lg btn-block btn-save" type="submit" disabled={saving}>
-          {saving ? 'Sending…' : 'Save & Text Quote'}
+        <button className="btn btn-primary btn-lg btn-block" type="submit" disabled={saving}>
+          {saving ? 'Sending…' : 'Save and send quote'}
         </button>
-
-        <p className="sms-preview">
-          <strong>Text to {e164 ? displayPhone(e164) : 'customer'}:</strong> Hi {name.trim().split(/\s+/)[0] || '[name]'}, here’s your quote from{' '}
-          {profile?.business_name || '[business]'} for {job.trim() || '[job]'}: {cents !== null ? `$${(cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '$[price]'}. Tap to view: [link] Reply STOP to stop texts.
-        </p>
       </form>
     </div>
   );

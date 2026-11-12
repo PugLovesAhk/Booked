@@ -123,6 +123,15 @@ Connect this repository in Cloudflare Pages:
 
 `public/_redirects` sends every route to the app, and `public/_headers` keeps the service worker fresh. Add your custom domain, and set `APP_URL` to the same address so links in texts point to it.
 
+## Admin login (for now)
+
+Log in with username **admin** and password **admin** to use the app before Supabase, Twilio and Stripe are connected.
+
+- It's a demo account. Its data is saved only in that browser, no texts are sent, and billing is turned off.
+- It can't see or change any real business's data.
+- The customer page works for its quotes in the same browser. Use **Customer view** on a quote to try "Yes, book it".
+- Before launch, turn it off by setting `VITE_ENABLE_ADMIN_LOGIN=false` in Cloudflare Pages and redeploying.
+
 ## Local development
 
 ```bash

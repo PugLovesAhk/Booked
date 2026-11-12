@@ -1,56 +1,68 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { GearIcon, ListIcon, LogoMark, PlusIcon } from '../components/Icons';
 import { useData } from '../lib/data';
 import { hasAccess, isSubscribed, trialDaysLeft } from '../lib/format';
 import { useLayout } from '../lib/layout';
 
-function TrialBanner() {
-  const { profile } = useData();
-  const navigate = useNavigate();
-  if (!profile || isSubscribed(profile)) return null;
-  const days = trialDaysLeft(profile);
-  if (!hasAccess(profile)) {
+function Banner() {
+  const { profile, demo } = useData();
+  if (demo) {
     return (
-      <button className="banner banner-alert" onClick={() => navigate('/settings#billing')}>
-        Your free trial has ended. <u>Add payment to keep sending quotes</u>
-      </button>
+      <div className="banner">
+        <strong>Admin demo account.</strong> No texts are sent.
+      </div>
     );
   }
+  if (!profile || isSubscribed(profile)) return null;
+  if (!hasAccess(profile)) {
+    return (
+      <div className="banner banner-alert" role="alert">
+        <strong>Your free trial has ended.</strong> <Link to="/settings#plan">Add a payment method</Link> to keep sending quotes.
+      </div>
+    );
+  }
+  const days = trialDaysLeft(profile);
   if (days > 7) return null;
   return (
-    <button className="banner" onClick={() => navigate('/settings#billing')}>
-      {days} day{days === 1 ? '' : 's'} left in your free trial. <u>Add payment</u>
-    </button>
+    <div className="banner">
+      <strong>{days} day{days === 1 ? '' : 's'} left in your free trial.</strong> <Link to="/settings#plan">Add a payment method</Link>
+    </div>
+  );
+}
+
+function Brand({ sub }: { sub?: string }) {
+  return (
+    <Link to="/quotes" className="brand">
+      <LogoMark />
+      <span className="brand-text">
+        <span className="brand-name">Booked</span>
+        {sub && <span className="brand-sub">{sub}</span>}
+      </span>
+    </Link>
   );
 }
 
 export function AppShell() {
   const layout = useLayout();
-  const { profile, summary } = useData();
-  const navigate = useNavigate();
+  const { profile, summary, demo } = useData();
 
   if (layout === 'desktop') {
     return (
       <div className="shell shell-desktop">
         <aside className="sidebar">
-          <div className="brand">
-            <LogoMark size={34} />
-            <div>
-              <div className="brand-name">Booked</div>
-              <div className="brand-sub">{profile?.business_name}</div>
-            </div>
-          </div>
-          <button className="btn btn-primary btn-block" onClick={() => navigate('/new')}>
-            <PlusIcon /> New Quote
-          </button>
-          <nav className="side-nav">
-            <NavLink to="/quotes"><ListIcon /> Quotes {summary.waiting > 0 && <span className="count">{summary.waiting}</span>}</NavLink>
+          <Brand />
+          <Link to="/new" className="btn btn-primary"><PlusIcon /> New quote</Link>
+          <nav className="side-nav" aria-label="Main">
+            <NavLink to="/quotes"><ListIcon /> Quotes {summary.waiting > 0 && <span className="side-count" title="Waiting">{summary.waiting}</span>}</NavLink>
             <NavLink to="/settings"><GearIcon /> Settings</NavLink>
           </nav>
-          <div className="sidebar-foot">Turn quotes into booked jobs.</div>
+          <div className="sidebar-foot">
+            <strong>{profile?.business_name || 'Your business'}</strong>
+            <span>{demo ? 'Admin demo' : 'Owner'}</span>
+          </div>
         </aside>
         <div className="main">
-          <TrialBanner />
+          <Banner />
           <Outlet />
         </div>
       </div>
@@ -61,17 +73,14 @@ export function AppShell() {
     return (
       <div className="shell shell-tablet">
         <header className="topbar">
-          <NavLink to="/quotes" className="brand">
-            <LogoMark size={36} />
-            <span className="brand-name">Booked</span>
-          </NavLink>
-          <nav className="top-nav">
+          <Brand sub={profile?.business_name} />
+          <nav className="top-nav" aria-label="Main">
             <NavLink to="/quotes"><ListIcon /> Quotes</NavLink>
             <NavLink to="/settings"><GearIcon /> Settings</NavLink>
-            <NavLink to="/new" className="btn btn-primary"><PlusIcon /> New Quote</NavLink>
+            <NavLink to="/new" className="btn btn-primary"><PlusIcon /> New quote</NavLink>
           </nav>
         </header>
-        <TrialBanner />
+        <Banner />
         <div className="main">
           <Outlet />
         </div>
@@ -81,16 +90,13 @@ export function AppShell() {
 
   return (
     <div className="shell shell-phone">
-      <TrialBanner />
+      <Banner />
       <div className="main">
         <Outlet />
       </div>
       <nav className="tabbar" aria-label="Main">
         <NavLink to="/quotes" className="tab"><ListIcon /><span>Quotes</span></NavLink>
-        <NavLink to="/new" className="tab tab-new" aria-label="New Quote">
-          <span className="tab-new-circle"><PlusIcon /></span>
-          <span>New Quote</span>
-        </NavLink>
+        <NavLink to="/new" className="tab tab-new"><PlusIcon /><span>New quote</span></NavLink>
         <NavLink to="/settings" className="tab"><GearIcon /><span>Settings</span></NavLink>
       </nav>
     </div>

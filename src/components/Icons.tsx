@@ -7,7 +7,7 @@ const base = (props: P) => ({
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 2.25,
+  strokeWidth: 1.75,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   'aria-hidden': true,
@@ -30,10 +30,10 @@ export const SortIcon = (p: P) => (<svg {...base(p)}><path d="M8 9l4-4 4 4M8 15l
 export const DollarIcon = (p: P) => (<svg {...base(p)}><path d="M12 2v20M17 6.5c-1-1.2-2.8-2-5-2-2.8 0-4.5 1.4-4.5 3.3 0 4.6 10 2.4 10 7.4 0 2-2 3.3-5 3.3-2.4 0-4.4-.9-5.5-2.3" /></svg>);
 export const LogoutIcon = (p: P) => (<svg {...base(p)}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>);
 
-/** Brand mark: green check in a rounded square. */
-export const LogoMark = ({ size = 32 }: { size?: number }) => (
+/** Brand mark: green check on a rounded tile. */
+export const LogoMark = ({ size = 28 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-    <rect width="64" height="64" rx="16" fill="#22D46A" />
-    <path d="M18 33.5l9 9L46.5 22" fill="none" stroke="#0B1F3A" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+    <rect width="64" height="64" rx="14" fill="#22C55E" />
+    <path d="M19 33.5l8.5 8.5L45.5 23" fill="none" stroke="#08172B" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
-import { callFunction, supabase } from './supabase';
+import type { NewQuoteInput, ProfilePatch, SmsResult } from './backend';
 import { useToast } from './toast';
-import type { Profile, Quote, QuoteStatus } from './types';
+import type { Message, Profile, Quote, QuoteStatus } from './types';
 
-interface Summary {
+export interface Summary {
   waiting: number;
   booked: number;
   declined: number;
@@ -14,16 +14,19 @@ interface Summary {
 }
 
 interface DataState {
+  demo: boolean;
   profile: Profile | null;
   quotes: Quote[];
   loading: boolean;
+  error: string;
   summary: Summary;
-  createQuote: (q: { customer_name: string; customer_phone: string; job: string; price: number }) => Promise<{ quote: Quote; sms: { ok: boolean; status: string; error?: string } }>;
-  resendQuote: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  createQuote: (q: NewQuoteInput) => Promise<{ quote: Quote; sms: SmsResult }>;
+  resendQuote: (id: string) => Promise<SmsResult>;
   setStatus: (id: string, status: QuoteStatus) => Promise<void>;
   markRead: (id: string) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
-  saveProfile: (patch: Partial<Pick<Profile, 'business_name' | 'phone' | 'followup_template' | 'followup_days'>>) => Promise<void>;
+  saveProfile: (patch: ProfilePatch) => Promise<void>;
+  loadMessages: (quoteId: string) => Promise<Message[]>;
   refresh: () => Promise<void>;
 }
 
@@ -36,64 +39,59 @@ function upsert(list: Quote[], q: Quote): Quote[] {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth();
-  const userId = session?.user.id;
+  const { session, backend } = useAuth();
+  const userId = session?.userId;
   const toast = useToast();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const quotesRef = useRef(quotes);
   quotesRef.current = quotes;
 
   const refresh = useCallback(async () => {
     if (!userId) return;
-    const [p, q] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).single(),
-      supabase.from('quotes').select('*').order('created_at', { ascending: false }).limit(1000),
-    ]);
-    if (p.data) setProfile(p.data as Profile);
-    if (q.data) setQuotes(q.data as Quote[]);
+    try {
+      const [p, q] = await Promise.all([backend.loadProfile(userId), backend.loadQuotes()]);
+      setProfile(p);
+      setQuotes(q);
+      setError('');
+    } catch (e) {
+      setError((e as Error).message);
+    }
     setLoading(false);
-  }, [userId]);
+  }, [userId, backend]);
 
-  // Initial load + live updates from every device.
+  // Initial load, then live updates from every device.
   useEffect(() => {
     if (!userId) return;
     setLoading(true);
     refresh();
 
-    const channel = supabase
-      .channel(`owner-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotes', filter: `user_id=eq.${userId}` }, (payload) => {
-        if (payload.eventType === 'DELETE') {
-          setQuotes((list) => list.filter((x) => x.id !== (payload.old as Quote).id));
-          return;
-        }
-        const q = payload.new as Quote;
+    const unsubscribe = backend.subscribe(userId, {
+      onQuote: (q) => {
         const before = quotesRef.current.find((x) => x.id === q.id);
         setQuotes((list) => upsert(list, q));
         // Customer activity: tell the owner right away.
         if (q.unread && q.last_event && q.last_event_at !== before?.last_event_at) {
-          const kind = q.status === 'booked' ? 'success' : 'info';
-          toast(`${q.customer_name}: ${q.last_event}`, kind, () => navigate(`/quotes/${q.id}`));
+          toast(`${q.customer_name}: ${q.last_event}`, q.status === 'booked' ? 'success' : 'info', () => navigate(`/quotes/${q.id}`));
         }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, (payload) => {
-        setProfile(payload.new as Profile);
-      })
-      .subscribe();
+      },
+      onDelete: (id) => setQuotes((list) => list.filter((x) => x.id !== id)),
+      onProfile: setProfile,
+    });
 
     // Phones pause background tabs; catch up whenever the app comes back.
     const onWake = () => document.visibilityState === 'visible' && refresh();
     document.addEventListener('visibilitychange', onWake);
     window.addEventListener('online', refresh);
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
       document.removeEventListener('visibilitychange', onWake);
       window.removeEventListener('online', refresh);
     };
-  }, [userId, refresh, toast, navigate]);
+  }, [userId, backend, refresh, toast, navigate]);
 
   const summary = useMemo<Summary>(() => {
     const now = new Date();
@@ -109,46 +107,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return s;
   }, [quotes]);
 
+  const markRead = useCallback(
+    async (id: string) => {
+      setQuotes((list) => list.map((q) => (q.id === id ? { ...q, unread: false } : q)));
+      await backend.updateQuote(id, { unread: false }).catch(() => {});
+    },
+    [backend],
+  );
+
+  const loadMessages = useCallback((quoteId: string) => backend.loadMessages(quoteId), [backend]);
+
   const value: DataState = {
+    demo: Boolean(session?.demo),
     profile,
     quotes,
     loading,
+    error,
     summary,
     refresh,
+    markRead,
+    loadMessages,
     createQuote: async (input) => {
-      const res = await callFunction<{ quote: Quote; sms: { ok: boolean; status: string; error?: string } }>('create-quote', input);
+      const res = await backend.createQuote(input);
       setQuotes((list) => upsert(list, res.quote));
       return res;
     },
     resendQuote: async (id) => {
-      const res = await callFunction<{ quote: Quote; sms: { ok: boolean; error?: string } }>('create-quote', { resend_id: id });
+      const res = await backend.resendQuote(id);
       setQuotes((list) => upsert(list, res.quote));
       return res.sms;
     },
     setStatus: async (id, status) => {
       const prev = quotesRef.current;
       setQuotes((list) => list.map((q) => (q.id === id ? { ...q, status } : q)));
-      const { data, error } = await supabase.from('quotes').update({ status }).eq('id', id).select().single();
-      if (error) {
+      try {
+        const q = await backend.updateQuote(id, { status });
+        setQuotes((list) => upsert(list, q));
+      } catch (e) {
         setQuotes(prev);
-        throw new Error('Could not update the quote. Check your connection.');
+        throw e;
       }
-      setQuotes((list) => upsert(list, data as Quote));
-    },
-    markRead: async (id) => {
-      setQuotes((list) => list.map((q) => (q.id === id ? { ...q, unread: false } : q)));
-      await supabase.from('quotes').update({ unread: false }).eq('id', id);
     },
     deleteQuote: async (id) => {
-      const { error } = await supabase.from('quotes').delete().eq('id', id);
-      if (error) throw new Error('Could not delete the quote.');
+      await backend.deleteQuote(id);
       setQuotes((list) => list.filter((q) => q.id !== id));
     },
     saveProfile: async (patch) => {
       if (!userId) return;
-      const { data, error } = await supabase.from('profiles').update(patch).eq('id', userId).select().single();
-      if (error) throw new Error('Could not save. Check your connection and try again.');
-      setProfile(data as Profile);
+      setProfile(await backend.saveProfile(userId, patch));
     },
   };
 

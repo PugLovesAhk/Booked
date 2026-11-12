@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { BackIcon, CheckIcon, PlusIcon, XIcon } from '../components/Icons';
+import { BackIcon, PlusIcon, XIcon } from '../components/Icons';
 import { QuoteDetail } from '../components/QuoteDetail';
 import { QuoteList, SearchBox, matches } from '../components/QuoteList';
 import { QuoteTable } from '../components/QuoteTable';
-import { Summary, type Filter } from '../components/Summary';
+import { StatusFilter, Summary, type Filter } from '../components/Summary';
 import { useData } from '../lib/data';
 import { useLayout } from '../lib/layout';
 
-// Remember search + filter while moving between the list and a quote.
+// Keep search + filter while moving between the list and a quote.
 const memory = { search: '', filter: 'all' as Filter };
 
 function useListState() {
@@ -21,26 +21,21 @@ function useListState() {
   return { search, setSearch, filter, setFilter };
 }
 
-function FilterChips({ filter, onFilter }: { filter: Filter; onFilter: (f: Filter) => void }) {
-  const items: [Filter, string][] = [['all', 'All'], ['waiting', 'Waiting'], ['booked', 'Booked'], ['declined', 'Declined']];
+function NoQuotes() {
   return (
-    <div className="chips" role="group" aria-label="Filter by status">
-      {items.map(([f, label]) => (
-        <button key={f} className={`chip${filter === f ? ' active' : ''}`} onClick={() => onFilter(f)} aria-pressed={filter === f}>
-          {label}
-        </button>
-      ))}
+    <div className="panel empty">
+      <p className="empty-title">No quotes yet</p>
+      <p>Create a quote and Booked texts it to your customer, then follows up until they answer.</p>
+      <Link to="/new" className="btn btn-primary"><PlusIcon /> New quote</Link>
     </div>
   );
 }
 
-function EmptyStart() {
+function NoMatches({ onClear }: { onClear: () => void }) {
   return (
-    <div className="empty-start">
-      <div className="empty-check"><CheckIcon /></div>
-      <h2>Send your first quote</h2>
-      <p>Add a quote and Booked texts it to your customer, then follows up on day 2, 5 and 10 until they answer.</p>
-      <Link to="/new" className="btn btn-primary btn-lg"><PlusIcon /> New Quote</Link>
+    <div className="panel empty">
+      <p className="empty-title">No matching quotes</p>
+      <button className="link-btn" onClick={onClear}>Clear search and filter</button>
     </div>
   );
 }
@@ -49,12 +44,15 @@ export function QuotesPage() {
   const layout = useLayout();
   const { id } = useParams();
   const navigate = useNavigate();
-  const { quotes, loading } = useData();
+  const { quotes, loading, error } = useData();
   const { search, setSearch, filter, setFilter } = useListState();
 
   const visible = useMemo(() => quotes.filter((q) => matches(q, search, filter)), [quotes, search, filter]);
   const selected = id ? quotes.find((q) => q.id === id) : undefined;
-  const emptyText = search || filter !== 'all' ? 'No quotes match.' : 'No quotes yet.';
+  const clear = () => {
+    setSearch('');
+    setFilter('all');
+  };
   const backToList = () => navigate('/quotes', { replace: layout !== 'phone' });
 
   useEffect(() => {
@@ -65,34 +63,34 @@ export function QuotesPage() {
   }, [layout, id, navigate]);
 
   if (loading) return <div className="loading" aria-busy="true">Loading quotes…</div>;
+  if (error && !quotes.length) return <div className="page"><div className="form-error">{error}</div></div>;
 
-  const notFound = id && !selected ? <p className="empty">That quote was deleted or doesn’t exist.</p> : null;
+  const missing = id && !selected ? <p className="empty">This quote was deleted.</p> : null;
+  const list = !quotes.length ? <NoQuotes /> : visible.length ? null : <NoMatches onClear={clear} />;
 
-  // ---------- Phone: list, or one quote full screen ----------
+  // ---------- Phone: the list, or one quote full screen ----------
   if (layout === 'phone') {
     if (id) {
       return (
         <div className="page">
-          <div className="page-bar">
-            <button className="btn-back" onClick={() => navigate('/quotes')}><BackIcon /> Quotes</button>
-          </div>
-          {selected ? <QuoteDetail quote={selected} onDeleted={backToList} /> : notFound}
+          <button className="back" onClick={() => navigate('/quotes')}><BackIcon /> Quotes</button>
+          {selected ? <QuoteDetail quote={selected} onDeleted={backToList} /> : missing}
         </div>
       );
     }
     return (
       <div className="page">
-        <h1 className="page-title">Quotes</h1>
-        {!quotes.length ? (
-          <EmptyStart />
-        ) : (
+        <header className="page-header"><h1 className="page-title">Quotes</h1></header>
+        {quotes.length > 0 && (
           <>
             <Summary filter={filter} onFilter={setFilter} compact />
-            <SearchBox value={search} onChange={setSearch} />
-            <FilterChips filter={filter} onFilter={setFilter} />
-            <QuoteList quotes={visible} emptyText={emptyText} />
+            <div className="toolbar">
+              <SearchBox value={search} onChange={setSearch} />
+              <StatusFilter filter={filter} onFilter={setFilter} />
+            </div>
           </>
         )}
+        {list ?? <QuoteList quotes={visible} />}
       </div>
     );
   }
@@ -101,48 +99,50 @@ export function QuotesPage() {
   if (layout === 'tablet') {
     return (
       <div className="split">
-        <section className="split-list">
-          <Summary filter={filter} onFilter={setFilter} compact />
-          <SearchBox value={search} onChange={setSearch} />
-          <FilterChips filter={filter} onFilter={setFilter} />
-          {quotes.length ? <QuoteList quotes={visible} selectedId={id} emptyText={emptyText} /> : <p className="empty">No quotes yet.</p>}
+        <section className="split-list" aria-label="Quotes">
+          {quotes.length > 0 && (
+            <>
+              <Summary filter={filter} onFilter={setFilter} compact />
+              <div className="toolbar">
+                <SearchBox value={search} onChange={setSearch} />
+                <StatusFilter filter={filter} onFilter={setFilter} />
+              </div>
+            </>
+          )}
+          {list ?? <QuoteList quotes={visible} selectedId={id} />}
         </section>
-        <section className="split-detail">
+        <section className="split-detail" aria-label="Quote details">
           {selected ? (
             <QuoteDetail key={selected.id} quote={selected} onDeleted={backToList} />
-          ) : notFound ? (
-            notFound
-          ) : quotes.length ? (
-            <div className="placeholder">Tap a quote to see the details.</div>
           ) : (
-            <EmptyStart />
+            missing ?? <div className="select-note">{quotes.length ? 'Select a quote to see its details.' : 'Your quotes will appear here.'}</div>
           )}
         </section>
       </div>
     );
   }
 
-  // ---------- Computer: summary boxes + sortable, searchable table ----------
+  // ---------- Computer: summary strip + sortable, searchable table ----------
   return (
-    <div className="page page-wide">
-      <div className="page-head">
+    <div className="page">
+      <header className="page-header">
         <h1 className="page-title">Quotes</h1>
-        <SearchBox value={search} onChange={setSearch} />
-      </div>
+      </header>
       <Summary filter={filter} onFilter={setFilter} />
-      {filter !== 'all' && (
-        <p className="filter-note">
-          Showing {filter} quotes. <button className="link" onClick={() => setFilter('all')}>Show all</button>
-        </p>
+      {quotes.length > 0 && (
+        <div className="toolbar">
+          <SearchBox value={search} onChange={setSearch} />
+          <StatusFilter filter={filter} onFilter={setFilter} />
+        </div>
       )}
-      {quotes.length ? <QuoteTable quotes={visible} selectedId={id} /> : <EmptyStart />}
+      {list ?? <QuoteTable quotes={visible} selectedId={id} />}
 
       {id && (
         <>
           <div className="drawer-backdrop" onClick={() => navigate('/quotes')} />
           <aside className="drawer" aria-label="Quote details">
             <button className="drawer-close" onClick={() => navigate('/quotes')} aria-label="Close"><XIcon /></button>
-            {selected ? <QuoteDetail key={selected.id} quote={selected} onDeleted={backToList} /> : notFound}
+            {selected ? <QuoteDetail key={selected.id} quote={selected} onDeleted={backToList} /> : missing}
           </aside>
         </>
       )}
