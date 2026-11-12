@@ -1,0 +1,22 @@
+# Supabase CLI config (used by `supabase link` / `supabase functions deploy`).
+project_id = "booked"
+
+[functions.create-quote]
+verify_jwt = false  # checks the user token itself (works with new JWT signing keys)
+
+[functions.billing]
+verify_jwt = false  # checks the user token itself (works with new JWT signing keys)
+
+# These are called by customers (no login), Twilio, Stripe or pg_cron.
+# Each one checks its own token or signature.
+[functions.quote-public]
+verify_jwt = false
+
+[functions.twilio-inbound]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.send-followups]
+verify_jwt = false
