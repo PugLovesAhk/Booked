@@ -110,7 +110,15 @@ Then set `project_url` and `app_url` in `private.app_settings` (above), and put 
   Its signing secret goes in `STRIPE_WEBHOOK_SECRET`.
 - Turn on the **Customer portal** (Settings → Billing → Customer portal) so owners can update a card or cancel.
 
-### 4. Cloudflare Pages
+### 4. Cloudflare (one-tap deploy)
+
+Open this link, sign in to Cloudflare, and choose **Create and deploy**:
+
+https://deploy.workers.cloudflare.com/?url=https://github.com/PugLovesAhk/Booked
+
+Cloudflare reads `wrangler.jsonc`, builds the app with `npm run build`, and serves `dist/` at a `*.workers.dev` address. Later pushes deploy automatically.
+
+### 4b. Cloudflare Pages (manual alternative)
 
 Connect this repository in Cloudflare Pages:
 
