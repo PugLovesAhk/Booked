@@ -2,11 +2,15 @@
 // POST { action: 'checkout' } -> { url } Stripe Checkout (card collected, trial carries over)
 // POST { action: 'portal' }   -> { url } Stripe customer portal (update card / cancel)
 import { stripe } from '../_shared/stripe.ts';
-import { adminClient, corsHeaders, env, getUser, json, type Profile } from '../_shared/util.ts';
+import { adminClient, appUrl as getAppUrl, corsHeaders, env, getUser, json, type Profile } from '../_shared/util.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  if (!env('STRIPE_SECRET_KEY', false) || !env('STRIPE_PRICE_ID', false)) {
+    return json({ error: 'Payments aren’t set up yet. Your free trial keeps working in the meantime.' }, 503);
+  }
 
   try {
     const admin = adminClient();
@@ -17,7 +21,7 @@ Deno.serve(async (req) => {
     if (!profile) return json({ error: 'Account not found.' }, 404);
 
     const { action } = await req.json().catch(() => ({}));
-    const appUrl = env('APP_URL').replace(/\/$/, '');
+    const appUrl = await getAppUrl(admin, req);
 
     let customerId = profile.stripe_customer_id;
     if (!customerId) {

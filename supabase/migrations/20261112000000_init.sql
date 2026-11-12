@@ -53,6 +53,7 @@ begin
   return new;
 end;
 $$;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -118,6 +119,7 @@ begin
   return new;
 end;
 $$;
+revoke execute on function public.quotes_touch() from public, anon, authenticated;
 
 create trigger quotes_touch
   before insert or update on public.quotes
@@ -138,6 +140,7 @@ create table public.messages (
 );
 
 create index messages_quote_idx on public.messages (quote_id, created_at);
+create index messages_user_idx on public.messages (user_id);
 
 alter table public.messages enable row level security;
 create policy "Owners read their messages" on public.messages
@@ -182,6 +185,7 @@ as $$
 $$;
 
 revoke execute on function public.due_followups(integer) from public, anon, authenticated;
+grant execute on function public.due_followups(integer) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Realtime: changes show up on every device right away.

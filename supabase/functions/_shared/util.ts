@@ -71,8 +71,30 @@ export function formatPrice(cents: number): string {
   });
 }
 
-export function quoteLink(token: string): string {
-  return `${env('APP_URL').replace(/\/$/, '')}/q/${token}`;
+/**
+ * Settings come from Edge Function secrets when set, otherwise from the
+ * server-only private.app_settings table (so they can be changed with SQL).
+ */
+const settingCache = new Map<string, string>();
+export async function setting(admin: SupabaseClient, envName: string, key: string): Promise<string> {
+  const fromEnv = env(envName, false);
+  if (fromEnv) return fromEnv;
+  if (settingCache.has(key)) return settingCache.get(key)!;
+  const { data } = await admin.rpc('app_setting', { setting_key: key });
+  const value = typeof data === 'string' ? data : '';
+  if (value) settingCache.set(key, value);
+  return value;
+}
+
+export async function appUrl(admin: SupabaseClient, req?: Request): Promise<string> {
+  // Until an app URL is configured, links point at the app the owner is using.
+  const url = (await setting(admin, 'APP_URL', 'app_url')) || (req?.headers.get('origin') ?? '');
+  if (!url) throw new Error('App URL is not set (APP_URL secret or private.app_settings.app_url)');
+  return url.replace(/\/$/, '');
+}
+
+export function quoteLink(base: string, token: string): string {
+  return `${base}/q/${token}`;
 }
 
 export function fillTemplate(template: string, vars: Record<string, string>): string {

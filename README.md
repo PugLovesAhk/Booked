@@ -57,44 +57,43 @@ supabase/functions/       Edge Functions (Deno)
 
 ## Setup
 
-You need accounts with **Supabase**, **Cloudflare**, **Twilio** and **Stripe**, plus Node 20+ and the [Supabase CLI](https://supabase.com/docs/guides/cli).
+### Live Supabase project (already done)
 
-### 1. Supabase
+The Supabase project **Booked** (ref `injgtlbpiwvblnqcdqyi`, free plan, US East) is set up:
 
-```bash
-supabase login
-supabase link --project-ref YOUR-PROJECT-REF
-supabase db push                       # creates tables, security rules, cron job
-```
+- Database schema, security rules and realtime are applied (`supabase/migrations/`).
+- All six Edge Functions are deployed.
+- The follow-up job runs every 15 minutes.
+- The app's Supabase URL and public key are in `.env.production`, so builds connect to it automatically.
 
-In the Supabase SQL editor, store the two values the follow-up cron job needs:
+Server settings live in a private table only the server can read. Change them in the Supabase SQL editor:
 
 ```sql
-select vault.create_secret('https://YOUR-PROJECT-REF.supabase.co', 'project_url');
-select vault.create_secret('PICK-A-LONG-RANDOM-STRING', 'cron_secret');
+-- The address customers' quote links use. Set it once the app is on Cloudflare Pages.
+update private.app_settings set value = 'https://YOUR-APP.pages.dev' where key = 'app_url';
 ```
 
-Set the Edge Function secrets and deploy:
+Until `app_url` is set, links in new quotes use the address of the app the owner is using, and follow-up texts wait.
+
+Under **Authentication → URL Configuration**, set **Site URL** to the app's address and add `https://YOUR-APP/quotes` and `https://YOUR-APP/reset` to the redirect URLs. Otherwise confirmation emails link to localhost.
+
+### Setting up a different Supabase project
 
 ```bash
-supabase secrets set \
-  APP_URL=https://booked.example.com \
-  CRON_SECRET=PICK-A-LONG-RANDOM-STRING \
-  TWILIO_ACCOUNT_SID=AC... \
-  TWILIO_AUTH_TOKEN=... \
-  TWILIO_FROM_NUMBER=+15125550000 \
-  STRIPE_SECRET_KEY=sk_live_... \
-  STRIPE_PRICE_ID=price_... \
-  STRIPE_WEBHOOK_SECRET=whsec_...
-
-supabase functions deploy            # deploys all six (settings in supabase/config.toml)
+supabase link --project-ref YOUR-PROJECT-REF
+supabase db push
+supabase functions deploy
 ```
 
-You can use `TWILIO_MESSAGING_SERVICE_SID=MG...` instead of `TWILIO_FROM_NUMBER`.
+Then set `project_url` and `app_url` in `private.app_settings` (above), and put the project's URL and anon key in `.env.production`.
 
-Until the Twilio keys are set, quotes still save. Texts are logged instead of sent, and the app shows "Text not sent".
+### 1. Secrets (Supabase → Edge Functions → Secrets)
 
-Under **Authentication → URL Configuration**, set **Site URL** to your app URL. Add `https://YOUR-APP/quotes` and `https://YOUR-APP/reset` to the redirect URLs.
+| Secret | For |
+| --- | --- |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`) | Sending texts. Without them, quotes save but show "Text not sent". |
+| `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` | The $39/month subscription. Without them, the free trial still works. |
+| `APP_URL` (optional) | Overrides `app_url` from the settings table. |
 
 ### 2. Twilio
 
@@ -119,9 +118,9 @@ Connect this repository in Cloudflare Pages:
 | --- | --- |
 | Build command | `npm run build` |
 | Build output directory | `dist` |
-| Environment variables | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (Supabase → Project Settings → API; a publishable key works) |
+| Environment variables | None needed (`.env.production` has them). Set `VITE_ENABLE_ADMIN_LOGIN=false` before launch. |
 
-`public/_redirects` sends every route to the app, and `public/_headers` keeps the service worker fresh. Add your custom domain, and set `APP_URL` to the same address so links in texts point to it.
+`public/_redirects` sends every route to the app, and `public/_headers` keeps the service worker fresh. Add your custom domain, then set `app_url` (see above) to the same address so links in texts point to it.
 
 ## Admin login (for now)
 

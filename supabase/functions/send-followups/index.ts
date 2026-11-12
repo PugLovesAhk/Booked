@@ -3,24 +3,32 @@
 import { sendSms, timingSafeEqual } from '../_shared/sms.ts';
 import {
   adminClient,
-  env,
   fillTemplate,
   firstName,
   formatPrice,
   hasAccess,
   json,
   quoteLink,
+  appUrl,
+  setting,
   type Profile,
   withOptOut,
 } from '../_shared/util.ts';
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  if (!timingSafeEqual(req.headers.get('x-cron-secret') ?? '', env('CRON_SECRET'))) {
+  const admin = adminClient();
+  const secret = await setting(admin, 'CRON_SECRET', 'cron_secret');
+  if (!secret || !timingSafeEqual(req.headers.get('x-cron-secret') ?? '', secret)) {
     return json({ error: 'Forbidden' }, 403);
   }
-
-  const admin = adminClient();
+  let base: string;
+  try {
+    base = await appUrl(admin);
+  } catch {
+    // Links in follow-ups need the app's address; wait until it's configured.
+    return json({ skipped: 'app_url not set in private.app_settings' });
+  }
   const { data: due, error } = await admin.rpc('due_followups', { max_rows: 200 });
   if (error) {
     console.error(error);
@@ -65,7 +73,7 @@ Deno.serve(async (req) => {
       business: profile.business_name || 'us',
       job: q.job,
       price: formatPrice(q.price_cents),
-      link: quoteLink(q.token),
+      link: quoteLink(base, q.token),
     });
     const sms = await sendSms(admin, q.customer_phone, text);
 

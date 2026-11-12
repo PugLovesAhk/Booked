@@ -12,6 +12,7 @@ import {
   json,
   normalizePhone,
   quoteLink,
+  appUrl,
   type Profile,
   withOptOut,
 } from '../_shared/util.ts';
@@ -58,9 +59,10 @@ Deno.serve(async (req) => {
       quote = data;
     }
 
+    const base = await appUrl(admin, req);
     const text =
       `Hi ${firstName(quote.customer_name)}, here's your quote from ${profile.business_name || 'us'} ` +
-      `for ${quote.job}: $${formatPrice(quote.price_cents)}. Tap to view: ${quoteLink(quote.token)}`;
+      `for ${quote.job}: $${formatPrice(quote.price_cents)}. Tap to view: ${quoteLink(base, quote.token)}`;
 
     const sms = await sendSms(admin, quote.customer_phone, text);
     const now = new Date().toISOString();
